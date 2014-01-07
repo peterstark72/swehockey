@@ -1,20 +1,29 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import urllib2
-import datetime
-from collections import namedtuple
+'''swehockey.py
 
-from bs4 import BeautifulSoup
+
+
+Example usage:
+
+
+
+'''
+
+
+__author__  = "Peter N Stark"
+
+
+from lxml import etree
+import datetime
+
+from collections import namedtuple
 
 
 PLAYERSBYTEAM_URL = "http://stats.swehockey.se/Teams/Info/PlayersByTeam/{}"
 ROSTER_URL = "http://stats.swehockey.se/Teams/Info/TeamRoster/{}"
 
-SKATERSSTATS_COLUMNS = ('team', 'rk', 'no','name','pos','gp','g', 'a','tp','pim','plus','minus','plusminus','gwg','ppg','shg','sog', 
-'sgperc','foplus','fominus','fo','foperc')
-GOALIESTATS_COLUMNS = ('team', 'rk','no','name','gpt', 'gkd','gpi', 'mip', 'ga', 'svs', 'sog', 'svsperc', 'gaa','so','w','l')
-TEAMROSTER_COLUMNS = ('team', 'no', 'name','dob','pos', 'shoots', 'height','weight','country','youthclub')
 
 
 LEAGUE_MAP = {
@@ -38,6 +47,11 @@ class SweHockeyException(Exception):
 
 
 
+'''Data
+
+
+'''
+
 def integer_or_none(v):
     try:
         return int(v)
@@ -50,10 +64,23 @@ def float_or_none(v):
     except ValueError:
         pass
 
+def minutes_in_play(v):
+    if ':' in v:
+        minutes, seconds = v.split(':')
+        return datetime.timedelta(minutes=int(minutes), seconds=int(seconds))
+
+def countrycode(v):
+    if len(v) >= 3:
+        return v[0:3]  
+
+def dateofbirth(v):
+    dt = datetime.datetime.strptime(v, "%Y-%m-%d")
+    return datetime.date(dt.year, dt.month, dt.day)
 
 
 INTEGERS = 'rk','no','gp','g','a','tp','pim','plus','minus','plusminus','gwg','ppg','shg','sog','foplus','fominus','fo','weight','height','gpt','gkd','gpi','ga','svs','sog','so','w','l'
-FLOATS= 'sgperc','foperc','gaa','svsperc'
+FLOATS = 'sgperc','foperc','gaa','svsperc'
+
 
 DATA_MAP = {}
 for i in INTEGERS:
@@ -61,202 +88,111 @@ for i in INTEGERS:
 for f in FLOATS:
     DATA_MAP[f] = float_or_none
 
+DATA_MAP['mip'] = minutes_in_play
+DATA_MAP['birthdate'] = dateofbirth
+DATA_MAP['nationalityclub'] = countrycode
+
+
+def textmapper(rowdata):
+    return tuple([unicode(v) for k,v in rowdata])
+
+def datamapper(rowdata):
+    return tuple([DATA_MAP.get(k,unicode)(v) for k,v in rowdata])
+
+
+mapper = datamapper
+
+
+tables = {
+    'playingstatistics' : (2,None),
+    'goalkeepingstatistics' : (1,None),
+    'teamroster' : (2,-2),
+    'teamofficials' : (1,None)
+}
 
 
 
-class RowDataMixin:
-    __slots__ = ()
+def cleanup_column_name(element):
 
-    @property
-    def splitname(self):
-        '''Returns a tuple of lastame, firstname for a given player'''
-        lastname, firstname = map(lambda x:x.strip().replace("*",""), self.name.split(","))
-        return (lastname, firstname)  
-
-    @property
-    def playerid(self):
-        name = u":".join(self.name).lower()
-        s = u":".join((str(self.no), name))
-        return hash(s)
+    return stringify(element).strip().replace("\n", "").replace("+","plus").replace("-","minus").replace("/","").replace("%","perc").replace(" ", "").lower()
 
 
- 
-
-class SkaterStatsRow(RowDataMixin, namedtuple("SkaterStatsRow", SKATERSSTATS_COLUMNS)):
-    __slots__ = ()
+def stringify(element):
+    return u"".join([x for x in element.itertext()])
 
 
-class GoalieStatsRow(RowDataMixin, namedtuple("GoalieStatsRow", GOALIESTATS_COLUMNS)):
-    __slots__ = ()
-
-    @property
-    def minutes_in_play(self):
-        if ':' in self.mip:
-            minutes, seconds = self.mip.split(':')
-            return datetime.timedelta(minutes=int(minutes), seconds=int(seconds))
+def get_tabletype(element):
+    subtitle = element.find(".//th[@class='tdSubTitle']")
+    return subtitle.text.strip().replace(" ","").lower()
 
 
-class TeamRosterRow(RowDataMixin,namedtuple("TeamRosterRow", TEAMROSTER_COLUMNS)):
-    __slots__ = ()  
+
+def readstats(doc):
+
+    for table in doc.findall(".//table[@class='tblContent']"):
     
-    @property
-    def countrycode(self):
-        c = self.country
-        if len(c) >= 3:
-            return c[0:3]  
+        #Team name
+        title = table.find(".//th[@class='tdTitle']")
+        if title is not None:
+            team = title.text
 
-    @property            
-    def dateofbirth(self):
-        dt = datetime.datetime.strptime(self.dob, "%Y-%m-%d")
-        return datetime.date(dt.year, dt.month, dt.day)
+        #Rows    
+        rows = list(table.findall(".//tr")) 
 
 
+        #Detect table table
+        table_type = get_tabletype(table)        
+        
+        #Where data rows starts, ends
+        start = tables[table_type][0]
+        end  = tables[table_type][1]
+        
+        #Column names
+        colnames = []
+        colnames.append('team')
+        colnames.extend(map(cleanup_column_name, rows[start].findall(".//th[@class='tdHeader']"))) 
 
-"""
-
-TABLES
-
-
-"""
-class AbstractShlTable:
-
-    rowdata = None
-
-    def __init__(self, soup):
-        self.soup = soup
-
-
-    def get_teamnames(self):
-        '''Returns tuple of team ID and team NAME from the navigation menu above the tables'''
-        all_anchors = self.soup.find(id="headerLinks").find_all("a")
-        return [(a['href'][1:], a.string) for a in all_anchors ]
-
-    def gettablerows(self, table):
-        '''Returns table rows, skipping headers'''
-        return table.find_all("tr")[3:]
-
-    def gettable(self, team):
-        '''Returns team table'''
-        return self.soup.find(id=team).next_sibling
-
-    def read(self):
-
-        for team_id, team_name in self.get_teamnames():
-            
-            team_table = self.gettable(team_id)
-            table = team_table.find("table", class_="tblContent")
-
-            for tr in self.gettablerows(table):
                 
-                s = [team_name] + [u"".join(td.stripped_strings) for td in tr.find_all("td")]                
+        RowdataTuple = namedtuple(table_type.capitalize(), colnames)
 
-                data = [DATA_MAP.get(k,unicode)(v) for k,v in zip(self.colnames,s)]
-                    
-                yield self.rowdata._make(data)
+        #Ahh...data
+        for row in rows[start+1:end]:  
+            s = []
+            s.append(team)      
+            s.extend(map(stringify, row.findall(".//td")))
 
-
-    def __iter__(self):
-        return self.read()
-
-    def fetch(self):
-        return list(self)
-
-    @property
-    def colnames(self):
-        return self.rowdata._fields
+            data = mapper(zip(colnames, s)) 
+            
+            yield RowdataTuple(*data)
 
 
 
-class SkatersStatsTable(AbstractShlTable):
-    rowdata = SkaterStatsRow
+def read(url):
+    parser = etree.HTMLParser()
+    doc = etree.parse(url, parser)    
+    return readstats(doc)
 
 
-class GoalieStatsTable(AbstractShlTable):
-    rowdata = GoalieStatsRow
-
-    def gettable(self, team):
-        skaters_table = self.soup.find(id=team)
-        goalie_table = skaters_table.find_next_siblings("table")[1]
-        return goalie_table
-
-    def gettablerows(self, table):
-        '''Returns table rows, skipping headers'''
-        return table.find_all("tr")[2:]
+def teamstats(league_id):
+    url = PLAYERSBYTEAM_URL.format(league_id)
+    return read(url)
 
 
-class TeamRostersTable(AbstractShlTable):
-    rowdata = TeamRosterRow
-
-    def gettablerows(self, table):
-        return table.find_all("tr")[3:-2]
-
-
-
-
-def default_loader(url):
-    '''Loads HTML from the given URL'''
-    try:
-        response = urllib2.urlopen(url)
-        content = response.read()
-        return content
-    except:
-        raise SweHockeyException("Could not load {}".format(url))
-
-
-
-class SHLPageReader(object):
-    def __init__(self, league_id, loader=default_loader):
-        url = self.url.format(league_id)
-        html = loader(url)
-        self.soup = BeautifulSoup(html)
-
-
-class TeamStatsReader(SHLPageReader):
-    url = PLAYERSBYTEAM_URL
-
-    @property
-    def skaters(self):
-        return SkatersStatsTable(self.soup)
-    
-    @property
-    def goalies(self):
-        return GoalieStatsTable(self.soup)
-
-
-class RostersReader(SHLPageReader):
-    url = ROSTER_URL
-
-    @property
-    def players(self):
-        return TeamRostersTable(self.soup)
-
+def rosters(league_id):
+    url = ROSTER_URL.format(league_id)
+    return read(url)
 
 
 
 def main():
 
-    import sys
-    import csv
-    import itertools
-    
-    if len(sys.argv) < 2:
-        raise SystemExit("Expected one or many swehockey league ids, e.g. 3905 3906")
+    for r in teamstats(3905):
+        print r
 
-    leagues = sys.argv[1:]        
-    writer = csv.writer(sys.stdout)
+    for r in rosters(3905):
+        print r
 
-    def asutf8(v): return unicode(v).encode('utf-8')
-    
-    for league in leagues:
 
-        swe_reader = TeamStatsReader(league)
-
-        skaters = swe_reader.skaters
-        goalies = swe_reader.goalies
-
-                
-        for p in itertools.chain(skaters, goalies):
-            writer.writerow([asutf8(v) for v in list(p)])
 
 
 
