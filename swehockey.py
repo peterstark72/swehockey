@@ -3,14 +3,19 @@
 
 '''swehockey.py
 
-
+Python module for readings stats tables from swehockey.se
 
 Example usage:
 
 
+for r in teamstats(3905):
+    print r
+
+for r in rosters(3905):
+    print r
+
 
 '''
-
 
 __author__  = "Peter N Stark"
 
@@ -41,12 +46,6 @@ LEAGUE_MAP = {
 
 
 
-class SweHockeyException(Exception):
-    pass
-
-
-
-
 '''Data
 
 
@@ -73,9 +72,6 @@ def countrycode(v):
     if len(v) >= 3:
         return v[0:3]  
 
-def dateofbirth(v):
-    dt = datetime.datetime.strptime(v, "%Y-%m-%d")
-    return datetime.date(dt.year, dt.month, dt.day)
 
 
 INTEGERS = 'rk','no','gp','g','a','tp','pim','plus','minus','plusminus','gwg','ppg','shg','sog','foplus','fominus','fo','weight','height','gpt','gkd','gpi','ga','svs','sog','so','w','l'
@@ -89,7 +85,6 @@ for f in FLOATS:
     DATA_MAP[f] = float_or_none
 
 DATA_MAP['mip'] = minutes_in_play
-DATA_MAP['birthdate'] = dateofbirth
 DATA_MAP['nationalityclub'] = countrycode
 
 
@@ -111,9 +106,7 @@ tables = {
 }
 
 
-
-def cleanup_column_name(element):
-
+def get_columnname(element):
     return stringify(element).strip().replace("\n", "").replace("+","plus").replace("-","minus").replace("/","").replace("%","perc").replace(" ", "").lower()
 
 
@@ -126,8 +119,7 @@ def get_tabletype(element):
     return subtitle.text.strip().replace(" ","").lower()
 
 
-
-def readstats(doc):
+def readrows(doc):
 
     for table in doc.findall(".//table[@class='tblContent']"):
     
@@ -150,7 +142,7 @@ def readstats(doc):
         #Column names
         colnames = []
         colnames.append('team')
-        colnames.extend(map(cleanup_column_name, rows[start].findall(".//th[@class='tdHeader']"))) 
+        colnames.extend(map(get_columnname, rows[start].findall(".//th[@class='tdHeader']"))) 
 
                 
         RowdataTuple = namedtuple(table_type.capitalize(), colnames)
@@ -167,21 +159,24 @@ def readstats(doc):
 
 
 
-def read(url):
+def splitname(name):
+    return name.split(", ")
+
+
+def load(url):
     parser = etree.HTMLParser()
     doc = etree.parse(url, parser)    
-    return readstats(doc)
+    return readrows(doc)
 
 
 def teamstats(league_id):
     url = PLAYERSBYTEAM_URL.format(league_id)
-    return read(url)
+    return load(url)
 
 
 def rosters(league_id):
     url = ROSTER_URL.format(league_id)
-    return read(url)
-
+    return load(url)
 
 
 def main():
