@@ -8,7 +8,7 @@ Python module for readings stats tables from swehockey.se
 Example usage:
 
 
-for r in teamstats(3905):
+for r in playerstats(3905):
     print r
 
 for r in rosters(3905):
@@ -21,9 +21,9 @@ __author__  = "Peter N Stark"
 
 
 from lxml import etree
-import datetime
 
 from collections import namedtuple
+
 
 
 PLAYERSBYTEAM_URL = "http://stats.swehockey.se/Teams/Info/PlayersByTeam/{}"
@@ -63,10 +63,6 @@ def float_or_none(v):
     except ValueError:
         pass
 
-def minutes_in_play(v):
-    if ':' in v:
-        minutes, seconds = v.split(':')
-        return datetime.timedelta(minutes=int(minutes), seconds=int(seconds))
 
 def countrycode(v):
     if len(v) >= 3:
@@ -83,8 +79,6 @@ for i in INTEGERS:
     DATA_MAP[i] = integer_or_none
 for f in FLOATS:
     DATA_MAP[f] = float_or_none
-
-DATA_MAP['mip'] = minutes_in_play
 DATA_MAP['nationalityclub'] = countrycode
 
 
@@ -98,7 +92,7 @@ def datamapper(rowdata):
 mapper = datamapper
 
 
-tables = {
+TABLES = {
     'playingstatistics' : (2,None),
     'goalkeepingstatistics' : (1,None),
     'teamroster' : (2,-2),
@@ -136,8 +130,8 @@ def readrows(doc):
         table_type = get_tabletype(table)        
         
         #Where data rows starts, ends
-        start = tables[table_type][0]
-        end  = tables[table_type][1]
+        start = TABLES[table_type][0]
+        end  = TABLES[table_type][1]
         
         #Column names
         colnames = []
@@ -163,29 +157,38 @@ def splitname(name):
     return name.split(", ")
 
 
-def load(url):
+def parse(url):
     parser = etree.HTMLParser()
     doc = etree.parse(url, parser)    
     return readrows(doc)
 
 
-def teamstats(league_id):
+def fromstring(content):
+    parser = etree.HTMLParser()
+    doc = etree.fromstring(content, parser)    
+    return readrows(doc)
+
+
+def playerstats(league_id):
     url = PLAYERSBYTEAM_URL.format(league_id)
-    return load(url)
+    return parse(url)
 
 
 def rosters(league_id):
     url = ROSTER_URL.format(league_id)
-    return load(url)
+    return parse(url)
 
 
 def main():
 
-    for r in teamstats(3905):
+    for r in playerstats(3905):
         print r
 
     for r in rosters(3905):
         print r
+
+
+
 
 
 

@@ -1,15 +1,14 @@
 The Swehockey Python module
 ===========================
 
-A Python module for reading playerstats and rosters from swehockey.se 
+A Python module for reading player-statistics and rosters from swehockey.se.
 
 
-# Basic Usage
+# Basic Usage 
 
 
 ```python
 import swehockey
-
 
 for row in swehockey.teamstats(3905):
     print row
@@ -33,3 +32,10 @@ Playingstatistics(team=u'AIK', rk=8, no=25, name=u'Joslin, Derek', pos=u'LD', gp
 Pl
 ```
 
+# Installation
+
+Using PIP:
+
+```
+pip install swehockey
+```  
