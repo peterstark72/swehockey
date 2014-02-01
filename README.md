@@ -1,11 +1,53 @@
 The Swehockey Python module
 ===========================
 
-A Python module for reading player-statistics and rosters from swehockey.se.
+A Python module for reading player-statistics and rosters from swehockey.se, the official site for swedish hockey statistics. 
+
+The module can be used as a commmand-line tool or as an integrated module in some other program. 
+
+
+
+# Command Line Tool
+```
+usage: swehockey.py [-h] [-l LEAGUE] [-p {skaters,goalies}] [--header]
+                    output [output ...]
+
+Get player stats from swehockey.se and write CSV file
+
+positional arguments:
+  output                The list of attributes to write, e.g. name, gp, gaa
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -l LEAGUE, --league LEAGUE
+                        The league ID from swehockey.se
+  -p {skaters,goalies}, --players {skaters,goalies}
+                        Skaters or Goalies
+  --header              Write header row
+```
+
+For example, to print the team, name and games played (gp) for all players in SHL, you write:
+
+```
+$ python swehockey.py -l 3905 -p skaters team name gp
+```
+
+Gives the following output:
+
+```
+AIK,"Janmark-Nylén, Mattias",36
+AIK,"Pirnes, Esa",42
+AIK,"Ramstedt, Teemu",36
+AIK,"Melin, Björn",25
+AIK,"Steen, Oscar",42
+AIK,"Liwing, Jonas",43
+AIK,"Hurtubise, Mark",45
+AIK,"Joslin, Derek",44
+AIK,"Ahlström, Oscar",45
+```
 
 
 # Basic Usage 
-
 
 ```python
 import swehockey
